@@ -53,15 +53,22 @@ async function imageGenerate(args) {
         );
         const item = (r.data.data || [])[0] || {};
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const file = path.join(mediaDir(), "image-" + stamp + ".png");
+        let bytes = null;
         if (item.b64_json) {
-            fs.writeFileSync(file, Buffer.from(item.b64_json, "base64"));
+            bytes = Buffer.from(item.b64_json, "base64");
         } else if (item.url) {
             const img = await axios.get(item.url, { responseType: "arraybuffer", timeout: 120000 });
-            fs.writeFileSync(file, Buffer.from(img.data));
-        } else {
+            bytes = Buffer.from(img.data);
+        }
+        if (!bytes) {
             return { success: false, error: "gateway returned no image data: " + JSON.stringify(r.data).slice(0, 200) };
         }
+        // Name the extension by real content (Cloudflare serves JPEG bytes).
+        const isPng = bytes.length > 8 && bytes.slice(0, 8).toString("hex") === "89504e470d0a1a0a";
+        const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+        const ext = isPng ? "png" : isJpeg ? "jpg" : "png";
+        const file = path.join(mediaDir(), "image-" + stamp + "." + ext);
+        fs.writeFileSync(file, bytes);
         return { success: true, file, model: item.model || r.headers["x-routed-via"] || "auto", prompt };
     } catch (err) {
         const body = err.response ? JSON.stringify(err.response.data).slice(0, 250) : err.message;
