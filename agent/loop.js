@@ -23,7 +23,7 @@ const REGISTRY_TOOLS = [
     "browser_open", "browser_read", "browser_click", "browser_type",
     "browser_extract", "browser_screenshot",
     "git_status", "git_diff", "git_log", "git_add", "git_commit",
-    "web_search",
+    "web_search", "image_generate", "video_generate",
 ];
 const MAX_FIX_ATTEMPTS = 3;
 
@@ -642,6 +642,8 @@ browser_click — {"ref": "e3"}   browser_type — {"ref": "e2", "text": "...", 
 browser_extract — {"selector": "body"}   browser_screenshot — {"name": "shot"}
 git_status — {"cwd": "repo path"}   git_diff — {"cwd": "...", "staged": false}
 git_log — {"cwd": "..."}   git_add — {"cwd": "...", "paths": ["."]}   git_commit — {"cwd": "...", "message": "..."}
+image_generate — {"prompt": "what to draw", "size": "1024x1024"} → saves a PNG, returns the path
+video_generate — {"prompt": "what to film", "seconds": 5} → saves an MP4, returns the path
 (push, pull, reset, clean and file deletion are blocked — never plan them)
 
 
@@ -1074,6 +1076,8 @@ browser_click — {"ref": "e3"}   browser_type — {"ref": "e2", "text": "...", 
 browser_extract — {"selector": "body"}   browser_screenshot — {"name": "shot"}
 git_status — {"cwd": "repo path"}   git_diff — {"cwd": "...", "staged": false}
 git_log — {"cwd": "..."}   git_add — {"cwd": "...", "paths": ["."]}   git_commit — {"cwd": "...", "message": "..."}
+image_generate — {"prompt": "what to draw", "size": "1024x1024"} → saves a PNG, returns the path
+video_generate — {"prompt": "what to film", "seconds": 5} → saves an MP4, returns the path
 (push, pull, reset, clean and file deletion are blocked — never plan them)
 
 

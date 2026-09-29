@@ -1,3 +1,7 @@
+const axios = require("axios");
+const fs = require("node:fs");
+const path = require("node:path");
+
 const { TOOLS: browserTools, getPage } = require("../tools/browser");
 const { TOOLS: gitTools, BLOCKED_OPERATIONS, checkBlocked } = require("../tools/git");
 const { TOOLS: webTools } = require("../tools/web");
@@ -15,6 +19,91 @@ const { runCommand } = require("../tools/terminal");
  * file delete) are NEVER executed here — they return
  * { needsConfirmation, reason } and the server layer asks the human.
  */
+
+function mediaDir() {
+    const dir = path.join(process.cwd(), "workspace", "media");
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+function gatewayConfig() {
+    require("dotenv").config();
+    return {
+        base: (process.env.FREELLMAPI_BASE_URL || "http://localhost:3001/v1").replace(/\/+$/, ""),
+        key: process.env.FREELLMAPI_API_KEY || "",
+    };
+}
+
+/** Generate an image via the gateway's /v1/images/generations. */
+async function imageGenerate(args) {
+    const prompt = String((args && args.prompt) || "").trim();
+    if (!prompt) return { success: false, error: "prompt required" };
+    const { base, key } = gatewayConfig();
+    if (!key) return { success: false, error: "FREELLMAPI_API_KEY missing in .env" };
+    try {
+        const r = await axios.post(
+            base + "/images/generations",
+            {
+                model: String(args.model || "auto"),
+                prompt,
+                n: 1,
+                size: String(args.size || "1024x1024"),
+            },
+            { headers: { Authorization: "Bearer " + key }, timeout: 180000 }
+        );
+        const item = (r.data.data || [])[0] || {};
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const file = path.join(mediaDir(), "image-" + stamp + ".png");
+        if (item.b64_json) {
+            fs.writeFileSync(file, Buffer.from(item.b64_json, "base64"));
+        } else if (item.url) {
+            const img = await axios.get(item.url, { responseType: "arraybuffer", timeout: 120000 });
+            fs.writeFileSync(file, Buffer.from(img.data));
+        } else {
+            return { success: false, error: "gateway returned no image data: " + JSON.stringify(r.data).slice(0, 200) };
+        }
+        return { success: true, file, model: item.model || r.headers["x-routed-via"] || "auto", prompt };
+    } catch (err) {
+        const body = err.response ? JSON.stringify(err.response.data).slice(0, 250) : err.message;
+        return { success: false, error: "image generation failed: " + body };
+    }
+}
+
+/** Generate a video via the gateway's /v1/videos/generations (returns an MP4 path). */
+async function videoGenerate(args) {
+    const prompt = String((args && args.prompt) || "").trim();
+    if (!prompt) return { success: false, error: "prompt required" };
+    const { base, key } = gatewayConfig();
+    if (!key) return { success: false, error: "FREELLMAPI_API_KEY missing in .env" };
+    try {
+        const r = await axios.post(
+            base + "/videos/generations",
+            {
+                model: String(args.model || "auto"),
+                prompt,
+                seconds: Number(args.seconds || 5),
+            },
+            { headers: { Authorization: "Bearer " + key }, timeout: 600000 }
+        );
+        const d = r.data;
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const file = path.join(mediaDir(), "video-" + stamp + ".mp4");
+        if (d.b64_json || (d.data && d.data[0] && d.data[0].b64_json)) {
+            const b64 = d.b64_json || d.data[0].b64_json;
+            fs.writeFileSync(file, Buffer.from(b64, "base64"));
+        } else if (d.url || (d.data && d.data[0] && d.data[0].url)) {
+            const url = d.url || d.data[0].url;
+            const vid = await axios.get(url, { responseType: "arraybuffer", timeout: 300000 });
+            fs.writeFileSync(file, Buffer.from(vid.data));
+        } else {
+            return { success: false, error: "gateway returned no video data: " + JSON.stringify(d).slice(0, 250) };
+        }
+        return { success: true, file, prompt };
+    } catch (err) {
+        const body = err.response ? JSON.stringify(err.response.data).slice(0, 250) : err.message;
+        return { success: false, error: "video generation failed: " + body };
+    }
+}
 
 const FILESYSTEM_TOOLS = {
     fs_list: {
@@ -43,11 +132,25 @@ const CONFIRM_REQUIRED = {
     fs_delete: "permanently deletes a file or folder",
 };
 
+const MEDIA_TOOLS = {
+    image_generate: {
+        description: "Generate an image from a text prompt via the FreeLLMAPI gateway (needs an image provider key, e.g. Google or Cloudflare). Saves a PNG under workspace/media and returns the path.",
+        input: { prompt: "string (what to draw)", size: "string (optional, e.g. 1024x1024)", model: "string (optional, default auto)" },
+        run: imageGenerate,
+    },
+    video_generate: {
+        description: "Generate a short video from a text prompt via the FreeLLMAPI gateway (needs a video provider key, e.g. ModelScope/Google). Saves an MP4 under workspace/media and returns the path.",
+        input: { prompt: "string (what to film)", seconds: "number (optional, default 5)", model: "string (optional, default auto)" },
+        run: videoGenerate,
+    },
+};
+
 const ALL_TOOLS = {
     ...FILESYSTEM_TOOLS,
     ...browserTools,
     ...gitTools,
     ...webTools,
+    ...MEDIA_TOOLS,
 };
 
 function toolCatalog() {
