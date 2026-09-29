@@ -1,6 +1,7 @@
-const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+
+const { chat, extractJson } = require("./llm");
 
 const { listFiles } = require("../tools/filesystem");
 const { runCommand } = require("../tools/terminal");
@@ -11,9 +12,6 @@ const {
     readFile
 } = require("../tools/file_editor");
 
-
-const OLLAMA_URL = "http://localhost:11434/api/chat";
-const MODEL = "qwen2.5:3b";
 
 const MAX_PLAN_STEPS = 8;
 const MAX_FIX_ATTEMPTS = 3;
@@ -80,6 +78,55 @@ function resolveWorkspacePath(input) {
     }
 
     return absolute;
+}
+
+
+// ============================================================
+// NORMALIZE ACTION (tolerate common LLM schema slips without an LLM fix)
+// ============================================================
+
+function normalizeAction(action) {
+
+    if (!action || typeof action !== "object") {
+        return action;
+    }
+
+
+    // run_command / read_file / etc. given as {command:...} or {path:...}
+    // instead of a plain string — pull the string out.
+    if (
+        action.tool !== "write_file" &&
+        action.input &&
+        typeof action.input === "object"
+    ) {
+
+        const inner =
+            action.input.command ??
+            action.input.cmd ??
+            action.input.path ??
+            action.input.folder ??
+            action.input.dir;
+
+        if (typeof inner === "string") {
+            action.input = inner;
+        }
+    }
+
+
+    // write_file given as {input:{path,content}} — unwrap the nesting.
+    if (
+        action.tool === "write_file" &&
+        action.input &&
+        typeof action.input === "object" &&
+        action.input.input &&
+        typeof action.input.input === "object" &&
+        typeof action.input.input.path === "string" &&
+        typeof action.input.input.content === "string"
+    ) {
+        action.input = action.input.input;
+    }
+
+    return action;
 }
 
 
@@ -426,33 +473,24 @@ function ensureWorkspace() {
 
 async function askQwen(systemPrompt, userMessage) {
 
-    const response =
-        await axios.post(
-
-            OLLAMA_URL,
-
-            {
-                model: MODEL,
-
-                messages: [
-                    {
-                        role: "system",
-                        content: systemPrompt
-                    },
-                    {
-                        role: "user",
-                        content: userMessage
-                    }
-                ],
-
-                stream: false,
-
-                format: "json"
-            }
+    const { content, provider } =
+        await chat(
+            [
+                {
+                    role: "system",
+                    content: systemPrompt
+                },
+                {
+                    role: "user",
+                    content: userMessage
+                }
+            ],
+            { kind: "smart" }
         );
 
+    console.log("[llm] " + provider);
 
-    return response.data.message.content.trim();
+    return content.trim();
 }
 
 
@@ -462,14 +500,9 @@ async function askQwen(systemPrompt, userMessage) {
 
 function parseJSON(text) {
 
-    try {
+    const parsed = extractJson(text);
 
-        return JSON.parse(text);
-
-    } catch {
-
-        return null;
-    }
+    return parsed && typeof parsed === "object" ? parsed : null;
 }
 
 
@@ -650,6 +683,8 @@ async function executePlan(
                     plan.steps[index]
                 )
             );
+
+        action = normalizeAction(action);
 
 
         console.log(

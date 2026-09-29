@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { chat, extractJson } = require("./llm");
 
 const { listFiles } = require("../tools/filesystem");
 const { runCommand } = require("../tools/terminal");
@@ -8,13 +8,9 @@ const {
     readFile
 } = require("../tools/file_editor");
 
-const OLLAMA_URL = "http://localhost:11434/api/chat";
-const MODEL = "qwen2.5:3b";
-
 async function askAI(userMessage) {
-    const response = await axios.post(OLLAMA_URL, {
-        model: MODEL,
-        messages: [
+    const { content, provider } = await chat(
+        [
             {
                 role: "system",
                 content: `
@@ -85,21 +81,18 @@ Example:
             {
                 role: "user",
                 content: userMessage
-            }
+            },
         ],
-        stream: false,
-        format: "json"
-    });
+        { kind: "auto" }
+    );
 
-    return response.data.message.content.trim();
+    console.log("[llm] planner via " + provider);
+    return content.trim();
 }
 
 function parsePlan(text) {
-    try {
-        return JSON.parse(text);
-    } catch {
-        return null;
-    }
+    const parsed = extractJson(text);
+    return parsed && typeof parsed === "object" ? parsed : null;
 }
 
 function validateAction(action) {

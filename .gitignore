@@ -5,3 +5,7 @@ workspace/
 AgentTest*/
 LoopTest*/
 TestProject/
+.env
+freellmapi.config.json
+data/
+freellmapi.out
