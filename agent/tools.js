@@ -76,7 +76,9 @@ async function imageGenerate(args) {
     }
 }
 
-/** Generate a video via the gateway's /v1/videos/generations (returns an MP4 path). */
+/** Generate a video via the gateway's /v1/videos/generations (returns an MP4 path).
+ *  The gateway may answer with raw MP4 bytes (content-type octet-stream) or a
+ *  JSON envelope with b64_json/url — handle both. */
 async function videoGenerate(args) {
     const prompt = String((args && args.prompt) || "").trim();
     if (!prompt) return { success: false, error: "prompt required" };
@@ -90,24 +92,36 @@ async function videoGenerate(args) {
                 prompt,
                 seconds: Number(args.seconds || 5),
             },
-            { headers: { Authorization: "Bearer " + key }, timeout: 600000 }
+            { headers: { Authorization: "Bearer " + key }, timeout: 600000, responseType: "arraybuffer" }
         );
-        const d = r.data;
+        const buf = Buffer.from(r.data);
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
         const file = path.join(mediaDir(), "video-" + stamp + ".mp4");
-        if (d.b64_json || (d.data && d.data[0] && d.data[0].b64_json)) {
-            const b64 = d.b64_json || d.data[0].b64_json;
+        if (buf.length > 12 && buf.slice(4, 8).toString("ascii") === "ftyp") {
+            // Raw MP4 bytes — save directly.
+            fs.writeFileSync(file, buf);
+            return { success: true, file, prompt, bytes: buf.length };
+        }
+        // Otherwise treat the body as JSON (url / b64_json envelope).
+        let d = {};
+        try {
+            d = JSON.parse(buf.toString("utf8"));
+        } catch {
+            return { success: false, error: "unrecognized video response (not MP4, not JSON)" };
+        }
+        const b64 = d.b64_json || (d.data && d.data[0] && d.data[0].b64_json);
+        const url = d.url || (d.data && d.data[0] && d.data[0].url);
+        if (b64) {
             fs.writeFileSync(file, Buffer.from(b64, "base64"));
-        } else if (d.url || (d.data && d.data[0] && d.data[0].url)) {
-            const url = d.url || d.data[0].url;
+        } else if (url) {
             const vid = await axios.get(url, { responseType: "arraybuffer", timeout: 300000 });
             fs.writeFileSync(file, Buffer.from(vid.data));
         } else {
-            return { success: false, error: "gateway returned no video data: " + JSON.stringify(d).slice(0, 250) };
+            return { success: false, error: "gateway returned no video data: " + buf.toString("utf8").slice(0, 250) };
         }
         return { success: true, file, prompt };
     } catch (err) {
-        const body = err.response ? JSON.stringify(err.response.data).slice(0, 250) : err.message;
+        const body = err.response ? String(Buffer.from(err.response.data).toString("utf8")).slice(0, 250) : err.message;
         return { success: false, error: "video generation failed: " + body };
     }
 }
