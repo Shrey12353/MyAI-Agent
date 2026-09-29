@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis — voice & personal agent</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; }
+  body { font-family: Segoe UI, system-ui, sans-serif; background:#0f1115; color:#e6e6e6; margin:0; display:flex; flex-direction:column; }
+  nav { display:flex; gap:14px; align-items:center; padding:10px 16px; background:#141922; border-bottom:1px solid #2a3140; flex:0 0 auto; }
+  nav strong { font-size:13.5px; color:#cde; }
+  nav a { color:#8ab; text-decoration:none; font-size:13.5px; padding:5px 10px; border-radius:6px; }
+  nav a.active { background:#1f2a3a; color:#fff; }
+  iframe { flex:1; width:100%; border:0; background:#0f1115; }
+  .down { margin:auto; text-align:center; color:#89a; }
+  .down code { color:#cde; }
+</style>
+</head>
+<body>
+<nav>
+  <strong>My AI Hub</strong>
+  <a href="/models/chat">Agent Chat</a>
+  <a href="/models/jarvis" class="active">Jarvis</a>
+  <a href="/">Gateway Dashboard</a>
+</nav>
+<iframe id="frame" src="http://localhost:3777/" title="Jarvis"></iframe>
+<div class="down" id="down" style="display:none">
+  <p>Jarvis's UI isn't running right now.</p>
+  <p>Start it with <code>npm run ui</code> in <code>C:\Users\shrey\Downloads\AI</code>.</p>
+</div>
+<script>
+document.getElementById('frame').addEventListener('error', () => {
+  document.getElementById('frame').style.display = 'none';
+  document.getElementById('down').style.display = 'block';
+});
+</script>
+</body>
+</html>

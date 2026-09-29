@@ -29,6 +29,7 @@ start "MyAI-Agent" cmd /k "node server.js"
 :done
 timeout /t 6 >nul
 echo.
+echo   ONE SITE (hub):     http://localhost:3001/models/chat
 echo   Gateway dashboard:  http://localhost:3001   (login: shrey@local.dev / Shrey@3001)
 echo   Agent API:          http://localhost:3000
 echo.

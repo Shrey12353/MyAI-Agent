@@ -29,9 +29,17 @@
   .msg pre { background:#11151c; padding:10px; border-radius:8px; overflow-x:auto; }
   .msg pre code { padding:0; background:none; }
   .msg ul { margin:6px 0 6px 18px; padding:0; }
+  .msg img.media, .msg video.media { display:block; max-width:100%; max-height:420px; margin:10px 0; border-radius:10px; border:1px solid #2a3140; }
+  .media-path { font-size:12px; color:#678; font-family:Consolas,monospace; }
 </style>
 </head>
 <body>
+<nav style="display:flex;gap:14px;align-items:center;padding:10px 16px;background:#141922;border-bottom:1px solid #2a3140;">
+  <strong style="font-size:13.5px;color:#cde;">My AI Hub</strong>
+  <a href="/models/chat" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;background:#1f2a3a;color:#fff;">Agent Chat</a>
+  <a href="/models/jarvis" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;">Jarvis</a>
+  <a href="/" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;">Gateway Dashboard</a>
+</nav>
 <div id="app">
   <h1>My AI Agent — tell me what to do</h1>
   <div id="log"></div>
@@ -41,103 +49,6 @@
   </div>
   <div class="hint">Enter = send &middot; Shift+Enter = new line &middot; the agent plans, runs tools, repairs its own mistakes, and formats answers in tables</div>
 </div>
-<script>
-const log = document.getElementById('log');
-const input = document.getElementById('input');
-const send = document.getElementById('send');
-
-function esc(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function inline(s) {
-  return s
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-}
-
-function renderMd(src) {
-  const lines = String(src || '').split(/\r?\n/);
-  let html = '';
-  let i = 0;
-  const isRow = (L) => /^\s*\|.*\|\s*$/.test(L);
-  const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-  while (i < lines.length) {
-    const L = lines[i];
-    if (/^```/.test(L)) {
-      let j = i + 1; const buf = [];
-      while (j < lines.length && !/^```/.test(lines[j])) { buf.push(lines[j]); j++; }
-      html += '<pre><code>' + esc(buf.join('\n')) + '</code></pre>';
-      i = j + 1; continue;
-    }
-    if (isRow(L) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
-      const head = cells(L); i += 2;
-      const rows = [];
-      while (i < lines.length && isRow(lines[i])) { rows.push(cells(lines[i])); i++; }
-      html += '<table><thead><tr>' + head.map((h) => '<th>' + inline(esc(h)) + '</th>').join('') + '</tr></thead><tbody>' +
-        rows.map((r) => '<tr>' + r.map((c) => '<td>' + inline(esc(c)) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
-      continue;
-    }
-    if (/^\s*[-*]\s+/.test(L)) {
-      const buf = [];
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*[-*]\s+/, '')); i++; }
-      html += '<ul>' + buf.map((b) => '<li>' + inline(esc(b)) + '</li>').join('') + '</ul>';
-      continue;
-    }
-    if (!L.trim()) { i++; continue; }
-    html += '<p>' + inline(esc(L)) + '</p>';
-    i++;
-  }
-  return html;
-}
-
-function add(cls, text) {
-  const d = document.createElement('div');
-  d.className = 'msg ' + cls;
-  d.textContent = text;
-  log.appendChild(d);
-  log.scrollTop = log.scrollHeight;
-  return d;
-}
-
-async function go() {
-  const message = input.value.trim();
-  if (!message) return;
-  input.value = '';
-  add('you', message);
-  send.disabled = true;
-  const bot = add('bot', 'Thinking...');
-  try {
-    const r = await fetch('/api/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
-    });
-    const j = await r.json();
-    if (j.error) { bot.textContent = 'Error: ' + j.error; }
-    else {
-      bot.innerHTML = '<strong>' + (j.success ? '\u2705' : '\u26a0\ufe0f') + '</strong> ' + renderMd(j.response || (j.success ? 'Done.' : 'failed'));
-      for (const s of (j.results || [])) {
-        const d = document.createElement('div');
-        d.className = 'step';
-        const ok = s.result && s.result.success;
-        d.innerHTML = (ok ? '<span class="ok">OK</span>' : '<span class="bad">FAIL</span>') +
-          ' ' + esc(s.action.tool) + (s.result && s.result.error ? ' — ' + esc(String(s.result.error).slice(0, 120)) : '');
-        log.appendChild(d);
-      }
-      log.scrollTop = log.scrollHeight;
-    }
-  } catch (e) {
-    bot.textContent = 'Agent unreachable: ' + e.message;
-  }
-  send.disabled = false;
-  input.focus();
-}
-
-send.onclick = go;
-input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); }
-});
-</script>
+<script src="chat/chat.js"></script>
 </body>
 </html>
