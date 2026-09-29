@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { chat, extractJson } = require("./llm");
+const { runTool } = require("./tools");
 
 const { listFiles } = require("../tools/filesystem");
 const { runCommand } = require("../tools/terminal");
@@ -14,6 +15,16 @@ const {
 
 
 const MAX_PLAN_STEPS = 8;
+
+/** Tools served by the central registry (agent/tools.js) rather than the
+ *  sandboxed workspace functions below. Inputs are objects. */
+const REGISTRY_TOOLS = [
+    "fs_list", "fs_read", "fs_write", "fs_create_folder",
+    "browser_open", "browser_read", "browser_click", "browser_type",
+    "browser_extract", "browser_screenshot",
+    "git_status", "git_diff", "git_log", "git_add", "git_commit",
+    "web_search",
+];
 const MAX_FIX_ATTEMPTS = 3;
 
 
@@ -91,6 +102,11 @@ function normalizeAction(action) {
         return action;
     }
 
+    // Registry tools (browser/git/web/fs_*) take object inputs — leave them alone.
+    if (REGISTRY_TOOLS.includes(action.tool)) {
+        return action;
+    }
+
 
     // run_command / read_file / etc. given as {command:...} or {path:...}
     // instead of a plain string — pull the string out.
@@ -147,6 +163,64 @@ function validateAction(action) {
 
     if (
         !action ||
+        typeof action !== "object"
+    ) {
+        return {
+            valid: false,
+            error: "Invalid action."
+        };
+    }
+
+
+    // --------------------------------------------------------
+    // REGISTRY TOOLS (browser / git / web / fs_*)
+    // --------------------------------------------------------
+
+    if (REGISTRY_TOOLS.includes(action.tool)) {
+
+        if (
+            !action.input ||
+            typeof action.input !== "object" ||
+            Array.isArray(action.input)
+        ) {
+            action.input = {};
+        }
+
+        if (
+            action.tool === "web_search" &&
+            !String(action.input.query || "").trim()
+        ) {
+            return {
+                valid: false,
+                error: "web_search needs input { query }"
+            };
+        }
+
+        if (
+            action.tool === "browser_open" &&
+            !String(action.input.url || "").trim()
+        ) {
+            return {
+                valid: false,
+                error: "browser_open needs input { url }"
+            };
+        }
+
+        if (
+            action.tool === "git_commit" &&
+            !String(action.input.message || "").trim()
+        ) {
+            return {
+                valid: false,
+                error: "git_commit needs input { message }"
+            };
+        }
+
+        return { valid: true };
+    }
+
+
+    if (
         !allowedTools.includes(action.tool)
     ) {
 
@@ -404,6 +478,10 @@ function validateAction(action) {
 
 async function executeAction(action) {
 
+    if (REGISTRY_TOOLS.includes(action.tool)) {
+        return runTool(action.tool, action.input || {});
+    }
+
     switch (action.tool) {
 
         case "create_folder":
@@ -553,6 +631,18 @@ write_file
 read_file
 list_files
 run_command
+
+ADDITIONAL TOOLS (input is a JSON object):
+
+web_search — input {"query": "..."}
+fs_list — input {"path": "folder"}   fs_read — {"path": "file"}
+fs_write — {"path": "file", "content": "..."}   fs_create_folder — {"path": "folder"}
+browser_open — {"url": "https://..."} then browser_read — {} (gives element refs e0, e1...)
+browser_click — {"ref": "e3"}   browser_type — {"ref": "e2", "text": "...", "submit": true}
+browser_extract — {"selector": "body"}   browser_screenshot — {"name": "shot"}
+git_status — {"cwd": "repo path"}   git_diff — {"cwd": "...", "staged": false}
+git_log — {"cwd": "..."}   git_add — {"cwd": "...", "paths": ["."]}   git_commit — {"cwd": "...", "message": "..."}
+(push, pull, reset, clean and file deletion are blocked — never plan them)
 
 
 RULES:
@@ -953,6 +1043,18 @@ write_file
 read_file
 list_files
 run_command
+
+ADDITIONAL TOOLS (input is a JSON object):
+
+web_search — input {"query": "..."}
+fs_list — input {"path": "folder"}   fs_read — {"path": "file"}
+fs_write — {"path": "file", "content": "..."}   fs_create_folder — {"path": "folder"}
+browser_open — {"url": "https://..."} then browser_read — {} (gives element refs e0, e1...)
+browser_click — {"ref": "e3"}   browser_type — {"ref": "e2", "text": "...", "submit": true}
+browser_extract — {"selector": "body"}   browser_screenshot — {"name": "shot"}
+git_status — {"cwd": "repo path"}   git_diff — {"cwd": "...", "staged": false}
+git_log — {"cwd": "..."}   git_add — {"cwd": "...", "paths": ["."]}   git_commit — {"cwd": "...", "message": "..."}
+(push, pull, reset, clean and file deletion are blocked — never plan them)
 
 
 RULES:
