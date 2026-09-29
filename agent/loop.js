@@ -680,6 +680,26 @@ chmod
 
 13. Do not use absolute Windows paths.
 
+14. File and folder paths must NOT start with "workspace/" — the system
+    resolves paths inside the workspace automatically. To save fruits.md in
+    the workspace, write the path as "fruits.md", NOT "workspace/fruits.md".
+
+
+FORMATTING SKILLS (important):
+
+When the task involves presenting data (comparisons, lists of items, search results,
+prices, schedules, file contents), choose a format the user can read at a glance:
+
+- Tables: to make data tables, write the data to a file in Markdown table form
+  (rows separated by newlines, cells by |, second line like |---|---|),
+  or in CSV with commas.
+- Example Markdown table inside a file:
+  | Name | Price | Stock |\n|---|---|---|\n| Pen | 10 | 50 |\n| Book | 120 | 7 |
+- Example CSV: Name,Price,Stock\nPen,10,50\nBook,120,7
+- Use Markdown tables when the user will read it in chat or a .md file;
+  use CSV when the user asks for a data file or a spreadsheet.
+- Align columns and keep cell text short. Never invent data.
+
 `;
 
 
@@ -1152,6 +1172,116 @@ ${JSON.stringify(
 
 
 // ============================================================
+// FINAL RESPONSE (present results, with tables where useful)
+// ============================================================
+
+function resultDigest(execution) {
+
+    const rows = [];
+
+    for (const r of execution.results || []) {
+
+        const res = r.result || {};
+        let data = "";
+
+        if (r.action.tool === "run_command") {
+            data = res.stdout || res.stderr || res.error || "";
+        } else if (r.action.tool === "web_search") {
+            data = JSON.stringify(
+                (res.results || []).slice(0, 5).map(x => ({ title: x.title, url: x.url, snippet: (x.snippet || "").slice(0, 140) }))
+            );
+        } else if (r.action.tool === "fs_read") {
+            data = String(res.content || "").slice(0, 600);
+        } else if (r.action.tool === "browser_extract") {
+            data = String(res.text || "").slice(0, 600);
+        } else if (r.action.tool === "browser_open" || r.action.tool === "browser_read") {
+            data = String(res.summary || "").slice(0, 400);
+        } else if (r.action.tool === "fs_write" || r.action.tool === "write_file") {
+            const written = (r.action.input && r.action.input.content) || "";
+            data = "wrote " + (res.path || "(file)") + ":\n" + String(written).slice(0, 800);
+        } else if (r.action.tool === "fs_create_folder" || r.action.tool === "create_folder") {
+            data = "created folder " + (res.path || "(done)");
+        } else if (r.action.tool === "git_status") {
+            data = String(res.status || "").slice(0, 400);
+        } else if (r.action.tool === "git_log") {
+            data = String(res.log || "").slice(0, 400);
+        } else if (r.action.tool === "git_diff") {
+            data = String(res.stat || "").slice(0, 400);
+        } else {
+            data = JSON.stringify(res).slice(0, 300);
+        }
+
+        rows.push({
+            step: r.step,
+            tool: r.action.tool,
+            ok: !!res.success,
+            data: String(data).slice(0, 700),
+        });
+    }
+
+    return rows;
+}
+
+
+async function composeFinalResponse(userMessage, execution) {
+
+    // Failed runs already carry a human-readable reason.
+    if (!execution.success) {
+        return execution.response || "The task could not be completed.";
+    }
+
+    const digest = resultDigest(execution);
+
+    // Nothing to report beyond success?  Keep it short, no LLM call.
+    const hasData = digest.some(r => r.data && r.data.length > 0);
+    if (!hasData) {
+        return execution.response || "Task completed successfully.";
+    }
+
+    const systemPrompt = `
+You are the reporting voice of a Windows computer AI agent.
+The agent just executed the user's task using tools.
+
+Write the final answer the user will read:
+
+1. Start with 1-2 sentences: did it succeed, and what was done.
+2. If the tool results contain data the user asked for (search results, file
+   contents, command output, page text, lists of items), PRESENT that data.
+3. For multiple comparable items, use a Markdown TABLE: header row, then a
+   |---|---| separator line, then one row per item. Keep cells short.
+4. Use bullet lists for loose items, **bold** for key values, backticks for
+   file names and commands, and a fenced code block for code or raw output.
+5. NEVER invent data that is not in the tool results. If the data is empty or
+   the task failed, say so plainly.
+6. Keep it under 150 words unless the data itself needs more.
+
+TASK:
+${userMessage}
+
+TOOL RESULTS:
+${JSON.stringify(digest, null, 1)}
+
+Write the final answer now.
+`;
+
+    try {
+        const { content } = await chat(
+            [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: "Write the final answer." },
+            ],
+            { kind: "fast", json: false }
+        );
+        const text = String(content || "").trim();
+        return text || execution.response;
+    } catch {
+        // Reporting must never break a successful run.
+        return execution.response || "Task completed successfully.";
+    }
+}
+
+
+// ============================================================
 // MAIN AGENT
 // ============================================================
 
@@ -1236,6 +1366,13 @@ async function runAgentLoop(
         );
 
 
+    const finalResponse =
+        await composeFinalResponse(
+            userMessage,
+            execution
+        );
+
+
     return {
 
         type: "agent_result",
@@ -1244,7 +1381,7 @@ async function runAgentLoop(
             execution.success,
 
         response:
-            execution.response,
+            finalResponse,
 
         plan,
 

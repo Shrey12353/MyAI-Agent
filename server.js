@@ -1,3 +1,4 @@
+const path = require("node:path");
 const express = require("express");
 const cors = require("cors");
 
@@ -38,6 +39,14 @@ const CHAT_PAGE = `<!DOCTYPE html>
   button { background:#2f6fdb; border:0; color:#fff; padding:0 22px; border-radius:8px; font-size:14px; cursor:pointer; }
   button:disabled { opacity:.5; cursor:wait; }
   .hint { color:#567; font-size:12px; margin-top:8px; }
+  .msg p { margin:6px 0; }
+  .msg table { border-collapse:collapse; margin:8px 0; font-size:13.5px; }
+  .msg th, .msg td { border:1px solid #2a3140; padding:5px 10px; text-align:left; }
+  .msg th { background:#1f2633; color:#bcd; }
+  .msg code { background:#11151c; padding:1px 5px; border-radius:4px; font-family:Consolas,monospace; font-size:12.5px; }
+  .msg pre { background:#11151c; padding:10px; border-radius:8px; overflow-x:auto; }
+  .msg pre code { padding:0; background:none; }
+  .msg ul { margin:6px 0 6px 18px; padding:0; }
 </style>
 </head>
 <body>
@@ -54,6 +63,49 @@ const CHAT_PAGE = `<!DOCTYPE html>
 const log = document.getElementById('log');
 const input = document.getElementById('input');
 const send = document.getElementById('send');
+const FENCE = new RegExp('^' + String.fromCharCode(96).repeat(3));
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function inline(s) {
+  return s
+    .replace(new RegExp(String.fromCharCode(96) + '([^' + String.fromCharCode(96) + ']+)' + String.fromCharCode(96), 'g'), '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+function renderMd(src) {
+  const lines = String(src || '').split(/\r?\n/);
+  let html = '';
+  let i = 0;
+  while (i < lines.length) {
+    const L = lines[i];
+    if (FENCE.test(L)) {
+      let j = i + 1; const buf = [];
+      while (j < lines.length && !FENCE.test(lines[j])) { buf.push(lines[j]); j++; }
+      html += '<pre><code>' + esc(buf.join('\n')) + '</code></pre>';
+      i = j + 1; continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(L) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      const head = cells(L); i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
+      html += '<table><thead><tr>' + head.map((h) => '<th>' + inline(esc(h)) + '</th>').join('') + '</tr></thead><tbody>' +
+        rows.map((r) => '<tr>' + r.map((c) => '<td>' + inline(esc(c)) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(L)) {
+      const buf = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { buf.push(lines[i].replace(/^\s*[-*]\s+/, '')); i++; }
+      html += '<ul>' + buf.map((b) => '<li>' + inline(esc(b)) + '</li>').join('') + '</ul>';
+      continue;
+    }
+    if (!L.trim()) { i++; continue; }
+    html += '<p>' + inline(esc(L)) + '</p>';
+    i++;
+  }
+  return html;
+}
 
 function add(cls, text) {
   const d = document.createElement('div');
@@ -80,13 +132,13 @@ async function go() {
     const j = await r.json();
     if (j.error) { bot.textContent = 'Error: ' + j.error; }
     else {
-      bot.textContent = j.success ? 'Done.' : 'Could not finish: ' + (j.response || 'failed');
+      bot.innerHTML = '<strong>' + (j.success ? '\u2705' : '\u26a0\ufe0f') + '</strong> ' + renderMd(j.response || (j.success ? 'Done.' : 'failed'));
       for (const s of (j.results || [])) {
         const d = document.createElement('div');
         d.className = 'step';
         const ok = s.result && s.result.success;
         d.innerHTML = (ok ? '<span class="ok">OK</span>' : '<span class="bad">FAIL</span>') +
-          ' ' + s.action.tool + (s.result && s.result.error ? ' — ' + String(s.result.error).slice(0, 120) : '');
+          ' ' + esc(s.action.tool) + (s.result && s.result.error ? ' — ' + esc(String(s.result.error).slice(0, 120)) : '');
         log.appendChild(d);
       }
       log.scrollTop = log.scrollHeight;
@@ -107,7 +159,9 @@ input.addEventListener('keydown', (e) => {
 </html>`;
 
 app.get("/", (req, res) => {
-    res.type("html").send(CHAT_PAGE);
+    // Real chat page lives in public/chat.html (the CHAT_PAGE template below
+    // is unused legacy — template literals ate its regex backslashes).
+    res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
 // ------------------------------------------

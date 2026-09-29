@@ -70,14 +70,14 @@ async function chatCloud(messages, kind, json) {
     return res.data.choices[0].message.content;
 }
 
-async function chatLocal(messages) {
+async function chatLocal(messages, json) {
     const res = await axios.post(
         OLLAMA_URL,
         {
             model: OLLAMA_MODEL,
             messages,
             stream: false,
-            format: "json",
+            format: json ? "json" : undefined,
             options: { temperature: 0.2 },
         },
         { timeout: LOCAL_TIMEOUT_MS }
@@ -118,7 +118,7 @@ async function chat(messages, opts = {}) {
         }
     }
 
-    const content = await chatLocal(messages);
+    const content = await chatLocal(messages, json);
     lastProvider = "ollama:" + OLLAMA_MODEL;
     return { content, provider: lastProvider };
 }
