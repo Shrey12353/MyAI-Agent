@@ -29,10 +29,16 @@ start "MyAI-Agent" cmd /k "node server.js"
 :done
 timeout /t 6 >nul
 echo.
-echo   ONE SITE (hub):     http://localhost:3001/models/chat
-echo   Gateway dashboard:  http://localhost:3001   (login: shrey@local.dev / Shrey@3001)
-echo   Agent API:          http://localhost:3000
+echo   =========================================================
+echo     OPEN THIS:   http://localhost:3001/hub
+echo   =========================================================
+echo     Jarvis:      http://localhost:3001/hub    (the hub is Jarvis)
+echo     Gateway:     http://localhost:3001
+echo                  login  shrey@local.dev  /  Shrey@3001
+echo     Agent API:   http://localhost:3000
 echo.
+echo   Opening the hub in your browser now.
 echo   Close the two black server windows to stop everything.
 echo.
+start "" http://localhost:3001/hub
 pause

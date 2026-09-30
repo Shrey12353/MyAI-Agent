@@ -20,8 +20,7 @@
 <body>
 <nav>
   <strong>My AI Hub</strong>
-  <a href="/models/chat">Agent Chat</a>
-  <a href="/models/jarvis" class="active">Jarvis</a>
+  <a href="/hub" class="active">Jarvis</a>
   <a href="/">Gateway Dashboard</a>
 </nav>
 <iframe id="frame" src="http://localhost:3777/" title="Jarvis"></iframe>
@@ -29,11 +28,7 @@
   <p>Jarvis's UI isn't running right now.</p>
   <p>Start it with <code>npm run ui</code> in <code>C:\Users\shrey\Downloads\AI</code>.</p>
 </div>
-<script>
-document.getElementById('frame').addEventListener('error', () => {
-  document.getElementById('frame').style.display = 'none';
-  document.getElementById('down').style.display = 'block';
-});
-</script>
+<!-- External, not inline: the gateway's CSP allows script-src 'self' only. -->
+<script src="/hub/jarvis/frame.js"></script>
 </body>
 </html>

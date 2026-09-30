@@ -686,6 +686,11 @@ chmod
     resolves paths inside the workspace automatically. To save fruits.md in
     the workspace, write the path as "fruits.md", NOT "workspace/fruits.md".
 
+15. If the message is a plain question, greeting, or conversation that needs no
+    tools, return {"goal":"answer directly","steps":[]}. An empty steps array
+    means "no tools needed" and the agent will answer the user directly, so
+    never invent a tool step just to fill the plan.
+
 
 FORMATTING SKILLS (important):
 
@@ -725,21 +730,35 @@ prices, schedules, file contents), choose a format the user can read at a glance
         return {
             success: false,
             error:
-                "Qwen returned an invalid plan.",
+                "The planner returned a response that was not a usable plan. Try rephrasing or simplifying the request.",
             raw
         };
     }
 
 
+    // An empty plan is a first-class outcome, not a failure: the message needs
+    // no tools, so runAgentLoop answers it directly. The planner prompt asks
+    // for exactly this shape (rule 15).
     if (
-        plan.steps.length === 0 ||
+        plan.steps.length === 0
+    ) {
+
+        return {
+            success: false,
+            noToolsNeeded: true,
+            plan
+        };
+    }
+
+
+    if (
         plan.steps.length > MAX_PLAN_STEPS
     ) {
 
         return {
             success: false,
             error:
-                "Qwen produced an invalid number of plan steps.",
+                "The planner produced a plan with more than " + MAX_PLAN_STEPS + " steps. Try a smaller, more specific request.",
             plan
         };
     }
@@ -998,7 +1017,7 @@ async function executePlan(
         }
 
 
-        // Replace the failed step with Qwen's correction.
+        // Replace the failed step with the repair brain's correction.
         plan.steps[index] =
             fixed.action;
 
@@ -1160,8 +1179,7 @@ ${JSON.stringify(
 
             success: false,
 
-            error:
-                "Qwen returned an invalid correction."
+            error:"The agent couldn't produce a valid correction for the failed step. Try rephrasing the request, or split it into smaller steps."
         };
     }
 
@@ -1286,6 +1304,60 @@ Write the final answer now.
 
 
 // ============================================================
+// DIRECT ANSWER (no tools needed)
+// ============================================================
+
+/**
+ * Answer a plain question or conversational message without running any tools.
+ * Returns the answer text, or null if no model could be reached.
+ */
+async function answerDirectly(userMessage) {
+
+    const systemPrompt = `
+
+You are Shrey's personal AI assistant, running locally on his Windows 11 machine.
+
+This message needs no tools, so answer it directly in conversation.
+
+1. Reply to what was actually asked. Be helpful and to the point.
+2. Use Markdown: **bold** for key points, bullet lists for steps, and a table
+   when comparing several items.
+3. Keep it short — a few sentences unless more detail is clearly wanted.
+4. If a good answer would need information you do not have, say so plainly and
+   say what would help.
+5. Never invent facts, dates, prices or file contents.
+
+`;
+
+    try {
+
+        const { content } =
+            await chat(
+                [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userMessage },
+                ],
+                { kind: "smart", json: false }
+            );
+
+        const text =
+            String(content || "").trim();
+
+        return text || null;
+
+    } catch (e) {
+
+        console.log(
+            "[direct-answer] failed:",
+            e && e.message
+        );
+
+        return null;
+    }
+}
+
+
+// ============================================================
 // MAIN AGENT
 // ============================================================
 
@@ -1325,6 +1397,54 @@ async function runAgentLoop(
 
 
     if (!planning.success) {
+
+        // The planner decided no tools are needed (a question, a greeting, small
+        // talk). Answer it directly rather than reporting a planning failure.
+        if (planning.noToolsNeeded) {
+
+            const answer =
+                await answerDirectly(
+                    userMessage
+                );
+
+            if (!answer) {
+
+                return {
+
+                    type: "agent_result",
+
+                    success: false,
+
+                    response:
+                        "I couldn't reach a model to answer that. Make sure the gateway is running (Start-MyAI.bat), then try again.",
+
+                    plan:
+                        null,
+
+                    steps: 0,
+
+                    results: []
+                };
+            }
+
+            return {
+
+                type: "agent_result",
+
+                success: true,
+
+                response:
+                    answer,
+
+                plan:
+                    planning.plan ||
+                    null,
+
+                steps: 0,
+
+                results: []
+            };
+        }
 
         return {
 

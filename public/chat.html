@@ -36,8 +36,8 @@
 <body>
 <nav style="display:flex;gap:14px;align-items:center;padding:10px 16px;background:#141922;border-bottom:1px solid #2a3140;">
   <strong style="font-size:13.5px;color:#cde;">My AI Hub</strong>
-  <a href="/models/chat" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;background:#1f2a3a;color:#fff;">Agent Chat</a>
-  <a href="/models/jarvis" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;">Jarvis</a>
+  <a href="/hub" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;background:#1f2a3a;color:#fff;">Agent Chat</a>
+  <a href="/hub/jarvis" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;">Jarvis</a>
   <a href="/" style="color:#8ab;text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;">Gateway Dashboard</a>
 </nav>
 <div id="app">
@@ -49,6 +49,8 @@
   </div>
   <div class="hint">Enter = send &middot; Shift+Enter = new line &middot; the agent plans, runs tools, repairs its own mistakes, and formats answers in tables</div>
 </div>
-<script src="chat/chat.js"></script>
+<!-- Absolute, not relative: the page is served at /hub (gateway) and / (agent
+     server), and both mount this folder under /hub for assets. -->
+<script src="/hub/chat.js"></script>
 </body>
 </html>

@@ -22,12 +22,17 @@ app.get("/", (req, res) => {
     // Real chat page lives in public/chat.html (the CHAT_PAGE template below
     // is unused legacy — template literals ate its regex backslashes).
     res.sendFile(path.join(__dirname, "public", "chat.html"));
+});
 
+// Static assets for the chat page.
 app.use("/chat", express.static(path.join(__dirname, "public")));
+
+// The page loads its script as /hub/chat.js so that the same HTML also works
+// when the gateway serves it at /hub. Mount the folder there too.
+app.use("/hub", express.static(path.join(__dirname, "public")));
 
 // Generated media (images/videos) so the chat page can render them inline.
 app.use("/media", express.static(path.join(__dirname, "workspace", "media")));
-});
 
 // ------------------------------------------
 // CHAT / AGENT

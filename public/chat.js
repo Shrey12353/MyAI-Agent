@@ -2,8 +2,17 @@
 const log = document.getElementById('log');
 const input = document.getElementById('input');
 const send = document.getElementById('send');
-// When embedded in the gateway (:3001/models/chat), the agent API lives on :3000.
-const AGENT_API = location.port === '3001' ? '/models/chat' : '';
+// Where this page is mounted, minus any trailing slash. The gateway serves the
+// hub at /hub and proxies the agent API on :3000; the standalone agent server
+// serves the same page at /. One derived base covers both the API and the
+// generated media, so nothing here depends on the port the page is reached on.
+const BASE = location.pathname.replace(/\/$/, '');
+
+// True while a request is in flight. The Send button is disabled during that
+// window, but the Enter key is a second way into go() and has to be gated by
+// the same rule — otherwise a second message typed mid-answer starts a
+// concurrent agent run.
+let busy = false;
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -60,14 +69,16 @@ function add(cls, text) {
 }
 
 async function go() {
+  if (busy) return;
   const message = input.value.trim();
   if (!message) return;
+  busy = true;
   input.value = '';
   add('you', message);
   send.disabled = true;
   const bot = add('bot', 'Thinking...');
   try {
-    const r = await fetch(AGENT_API + '/api/agent', {
+    const r = await fetch(BASE + '/api/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
@@ -80,15 +91,14 @@ async function go() {
       for (const s of (j.results || [])) {
         const r = s.result || {};
         if (!r.success || !r.file) continue;
-        const base = location.pathname.replace(/\/$/, '');
         const fname = String(r.file).replace(/\\/g, '/').split('/').pop();
         const isVideo = /\.(mp4|webm|mov)$/i.test(fname);
         const holder = document.createElement('div');
         holder.className = 'msg bot';
         if (isVideo) {
-          holder.innerHTML = '<video class="media" controls src="' + base + '/media/' + encodeURIComponent(fname) + '"></video>';
+          holder.innerHTML = '<video class="media" controls src="' + BASE + '/media/' + encodeURIComponent(fname) + '"></video>';
         } else {
-          holder.innerHTML = '<img class="media" alt="generated" src="' + base + '/media/' + encodeURIComponent(fname) + '">';
+          holder.innerHTML = '<img class="media" alt="generated" src="' + BASE + '/media/' + encodeURIComponent(fname) + '">';
         }
         const cap = document.createElement('div');
         cap.className = 'media-path';
@@ -109,6 +119,7 @@ async function go() {
   } catch (e) {
     bot.textContent = '⚠️ Agent server not reachable (' + e.message + '). Start it with Start-MyAI.bat (port 3000 must be running).';
   }
+  busy = false;
   send.disabled = false;
   input.focus();
 }

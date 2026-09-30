@@ -9,3 +9,6 @@ TestProject/
 freellmapi.config.json
 data/
 freellmapi.out
+freellmapi.err
+agent.out
+agent.err
